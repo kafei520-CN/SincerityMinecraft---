@@ -6,11 +6,13 @@ import {fileURLToPath} from 'node:url';
 const root = dirname(fileURLToPath(import.meta.url));
 const port = process.env.PORT || '4321';
 const host = process.env.HOST || '0.0.0.0';
+const isWin = process.platform === 'win32';
 
-function run(command, args, extraEnv = {}) {
+function run(command, args, extraEnv = {}, shell = false) {
   const result = spawnSync(command, args, {
     cwd: root,
     stdio: 'inherit',
+    shell,
     env: {...process.env, ...extraEnv},
   });
   if (result.error) {
@@ -22,23 +24,38 @@ function run(command, args, extraEnv = {}) {
   }
 }
 
-function has(command, args) {
-  const result = spawnSync(command, args, {stdio: 'ignore'});
-  return result.status === 0;
+function findPnpm() {
+  const candidates = isWin
+    ? [
+        ['corepack.cmd', ['pnpm']],
+        ['corepack', ['pnpm']],
+        ['pnpm.cmd', []],
+        ['pnpm', []],
+      ]
+    : [
+        ['corepack', ['pnpm']],
+        ['pnpm', []],
+      ];
+  for (const [bin, prefix] of candidates) {
+    const check = spawnSync(bin, [...prefix, '--version'], {
+      stdio: 'ignore',
+      shell: isWin,
+    });
+    if (check.status === 0) {
+      return {bin, prefix};
+    }
+  }
+  return null;
 }
 
-let pm = null;
-if (has('corepack', ['pnpm', '--version'])) {
-  pm = ['corepack', 'pnpm'];
-} else if (has('pnpm', ['--version'])) {
-  pm = ['pnpm'];
-} else {
+const pm = findPnpm();
+if (!pm) {
   console.error('pnpm was not found. Install Node.js 22 or newer, then run: node deploy.mjs');
   process.exit(1);
 }
 
 console.log('Installing dependencies...');
-run(pm[0], [...pm.slice(1), 'install']);
+run(pm.bin, [...pm.prefix, 'install'], {}, isWin);
 
 const astro = join(root, 'node_modules', 'astro', 'bin', 'astro.mjs');
 if (!existsSync(astro)) {
