@@ -3,7 +3,7 @@ import FavoriteButton from '../../components/FavoriteButton';
 import RememberTool from '../../components/RememberTool';
 import {ToolCapsule} from '../../components/ToolCapsule';
 import BaseLayout from '../../layouts/BaseLayout.astro';
-import '../../styles/global.css';
+import StudioLayout from '../../layouts/StudioLayout.astro';
 import CommandWidget from '../../tools/command-gen/Widget';
 import DayClockWidget from '../../tools/day-clock/Widget';
 import MotdWidget from '../../tools/motd/Widget';
@@ -27,17 +27,11 @@ const related = tool ? relatedTools(tool) : [];
 ---
 
 {tool?.id === 'skin-render' ? (
-<html lang="zh-CN">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title> </title>
-    <link rel="icon" href="/favicon.svg" />
-  </head>
-  <body class="h-dvh overflow-hidden bg-[#111418]">
-    <SkinRenderWidget client:load />
-  </body>
-</html>
+<StudioLayout>
+  <SkinRenderWidget client:only="react">
+    <div class="grid h-dvh place-items-center text-sm text-white">正在加载编辑器</div>
+  </SkinRenderWidget>
+</StudioLayout>
 ) : tool ? (
 <BaseLayout title={tool.name} description={tool.summary}>
   <RememberTool client:load toolId={tool.id} />

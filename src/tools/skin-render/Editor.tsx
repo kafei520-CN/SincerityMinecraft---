@@ -130,36 +130,40 @@ export default function Editor() {
     const root = new THREE.Group();
     root.name = '玩家';
     scene.add(root);
-    installHost(scene, camera, controls);
-    const api: SceneApi = {scene, camera, controls, transform, root, parts: new Map(), nodes: []};
-    apiRef.current = api;
-
-    const resize = () => {
-      const box = host.getBoundingClientRect();
-      camera.aspect = Math.max(1, box.width) / Math.max(1, box.height);
-      camera.updateProjectionMatrix();
-      renderer.setSize(Math.max(1, box.width), Math.max(1, box.height));
-    };
-    resize();
-    const observer = new ResizeObserver(resize);
-    observer.observe(host);
     let frame = 0;
-    const tick = () => {
-      frame = requestAnimationFrame(tick);
-      controls.update();
-      renderer.render(scene, camera);
-    };
-    tick();
-    void loadPathtracer().catch((caught: unknown) => {
-      setError(caught instanceof Error ? caught.message : '路径追踪没有打开');
-    });
-    mountSkin(api, paintSkin(), false);
-    publish(api);
-    attachGizmo('player');
+    let observer: ResizeObserver | undefined;
+    try {
+      installHost(scene, camera, controls);
+      const api: SceneApi = {scene, camera, controls, transform, root, parts: new Map(), nodes: []};
+      apiRef.current = api;
+      const resize = () => {
+        const box = host.getBoundingClientRect();
+        camera.aspect = Math.max(1, box.width) / Math.max(1, box.height);
+        camera.updateProjectionMatrix();
+        renderer.setSize(Math.max(1, box.width), Math.max(1, box.height));
+      };
+      resize();
+      observer = new ResizeObserver(resize);
+      observer.observe(host);
+      const tick = () => {
+        frame = requestAnimationFrame(tick);
+        controls.update();
+        renderer.render(scene, camera);
+      };
+      tick();
+      void loadPathtracer().catch((caught: unknown) => {
+        setError(caught instanceof Error ? caught.message : '路径追踪没有打开');
+      });
+      mountSkin(api, paintSkin(), false);
+      publish(api);
+      attachGizmo('player');
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : '编辑器启动失败');
+    }
 
     return () => {
       cancelAnimationFrame(frame);
-      observer.disconnect();
+      observer?.disconnect();
       transform.detach();
       transform.dispose();
       controls.dispose();

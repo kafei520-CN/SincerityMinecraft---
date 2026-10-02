@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import {FACE_ORDER} from './boxUv';
+import {makeId} from './id';
 
 export interface TracerTexture {
   uuid: string;
@@ -205,7 +206,7 @@ export function clearElements(): void {
 export function adoptMesh(mesh: THREE.Mesh, texture: TracerTexture, name: string): TraceElement {
   const Ctor = globals().Cube;
   const element = new Ctor();
-  element.id = crypto.randomUUID();
+  element.id = makeId();
   element.name = name;
   element.mesh = mesh;
   element.visibility = true;
@@ -263,7 +264,7 @@ export function createTexture(
     side: THREE.DoubleSide,
   });
   const texture: TracerTexture = {
-    uuid: crypto.randomUUID(),
+    uuid: makeId(),
     name,
     canvas,
     img: canvas,

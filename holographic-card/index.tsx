@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { ToolGlyph } from '../src/components/ToolGlyph';
 import { createRenderer } from './renderer';
 
@@ -12,18 +12,14 @@ export type CardTool = {
 
 export function Example({tools = []}: {tools?: CardTool[]}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [error, setError] = useState(false);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    if (!window.isSecureContext || !navigator.gpu) return;
     let mounted = true;
     const renderer = createRenderer(canvas);
-    void renderer.ready.catch((cause: unknown) => {
-      if (!mounted) return;
-      console.error('Holographic card initialization failed:', cause);
-      setError(true);
-    });
+    void renderer.ready.catch(() => undefined);
     return () => { mounted = false; renderer.dispose(); };
   }, []);
 
@@ -45,11 +41,6 @@ export function Example({tools = []}: {tools?: CardTool[]}) {
           ))}
         </ol>
       </nav>
-      {error && (
-        <p className="pointer-events-none absolute inset-x-0 bottom-4 text-center font-mono text-[10px] tracking-[0.16em] text-white/50">
-          这张卡需要支持 WebGPU 的浏览器。
-        </p>
-      )}
     </div>
   );
 }

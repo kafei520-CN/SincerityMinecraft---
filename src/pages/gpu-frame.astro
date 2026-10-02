@@ -12,6 +12,7 @@ import '../styles/global.css';
     <script>
       import * as THREE from 'three';
       import {FACE_ORDER} from '../tools/skin-render/boxUv';
+      import {makeId} from '../tools/skin-render/id';
 
       const g = globalThis as unknown as Record<string, unknown>;
       const scene = new THREE.Scene();
@@ -154,7 +155,7 @@ import '../styles/global.css';
             const material = new THREE.MeshBasicMaterial({map, transparent: true, alphaTest: 0.1, side: THREE.DoubleSide});
             const emissive = job.meshes.some((mesh) => mesh.texture === index && mesh.emissive > 0);
             textures.push({
-              uuid: crypto.randomUUID(),
+              uuid: makeId(),
               name: emissive ? `自发光 ${index}` : `贴图 ${index}`,
               canvas,
               img: canvas,
