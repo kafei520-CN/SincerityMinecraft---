@@ -1,0 +1,31 @@
+---
+import Widget from '../tools/skin-render/Widget';
+import Editor from '../tools/skin-render/Editor';
+---
+
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>渲染测试 - Minecraft 工具</title>
+</head>
+<body class="min-h-screen bg-[#0A0D12] p-8">
+  <div class="mx-auto max-w-7xl space-y-8">
+    <header class="text-center">
+      <h1 class="text-3xl font-bold text-[#e8eaed]">Minecraft 皮肤渲染测试</h1>
+      <p class="mt-2 text-sm text-[#8b919a]">路径追踪渲染 + 可弯曲关节 + 3D 编辑器</p>
+    </header>
+
+    <section>
+      <h2 class="mb-4 text-xl font-semibold text-[#e8eaed]">皮肤渲染</h2>
+      <Widget client:load />
+    </section>
+
+    <section>
+      <h2 class="mb-4 text-xl font-semibold text-[#e8eaed]">3D 编辑器</h2>
+      <Editor client:load />
+    </section>
+  </div>
+</body>
+</html>

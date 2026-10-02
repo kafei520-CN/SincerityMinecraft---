@@ -1,0 +1,27 @@
+---
+import {categoryById} from '../../tools/catalog';
+
+const category = categoryById(Astro.params.category ?? '');
+if (!category) {
+  Astro.response.status = 404;
+}
+const target = category ? `/tools/?category=${category.id}` : '/tools/';
+---
+
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>{category ? `正在打开${category.name}` : '页面不存在'}</title>
+    {category && <meta http-equiv="refresh" content={`0;url=${target}`} />}
+    <link rel="canonical" href={target} />
+    {category && (
+      <script define:vars={{target}}>
+        location.replace(target);
+      </script>
+    )}
+  </head>
+  <body>
+    <p><a href={target}>{category ? `打开${category.name}` : '回到工具'}</a></p>
+  </body>
+</html>

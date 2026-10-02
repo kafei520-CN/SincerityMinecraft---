@@ -1,0 +1,18 @@
+---
+import RecentTools from '../../components/RecentTools';
+import ToolsDirectory from '../../components/ToolsDirectory';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import {categories, siteName, tools} from '../../tools/catalog';
+
+const requested = Astro.url.searchParams.get('category') ?? 'all';
+const current = categories.some((category) => category.id === requested) ? requested : 'all';
+---
+
+<BaseLayout title="工具" description={`${siteName}的全部工具`}>
+  <h1 class="text-3xl font-semibold">工具</h1>
+  <p class="mt-3 max-w-md leading-7 text-mute">按分类查看。点一个胶囊进入工具。</p>
+  <div class="mt-10">
+    <RecentTools client:load />
+    <ToolsDirectory categories={categories} tools={tools} current={current} />
+  </div>
+</BaseLayout>

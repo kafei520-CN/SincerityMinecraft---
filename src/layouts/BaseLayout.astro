@@ -1,0 +1,66 @@
+---
+import SearchBox from '../components/SearchBox';
+import {siteName} from '../tools/catalog';
+import '../styles/global.css';
+
+interface Props {
+  title: string;
+  description: string;
+  poster?: boolean;
+}
+
+const {title, description, poster = false} = Astro.props;
+const fullTitle = title === siteName ? siteName : `${title} · ${siteName}`;
+const inTools = Astro.url.pathname.startsWith('/tools');
+const frame = poster
+  ? 'w-full px-5 sm:px-8 lg:px-14'
+  : 'mx-auto w-full max-w-5xl px-5';
+const toolLink = inTools
+  ? 'rounded-full bg-ink px-4 py-2 text-sm text-white'
+  : 'rounded-full border border-line bg-white px-4 py-2 text-sm hover:border-ink';
+---
+
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{fullTitle}</title>
+    <meta name="description" content={description} />
+    <link rel="icon" href="/favicon.svg" />
+  </head>
+  <body class="flex min-h-screen flex-col bg-paper text-ink">
+    <a
+      class="sr-only rounded-full bg-ink px-4 py-2 text-white focus:not-sr-only focus:absolute focus:top-3 focus:left-3"
+      href="#content"
+    >
+      跳到内容
+    </a>
+    <header class="sticky top-0 z-10 border-b border-line bg-white/90 backdrop-blur">
+      <div class:list={[frame, 'flex flex-col gap-4 py-4 sm:flex-row sm:items-center']}>
+        <div class="flex items-center justify-between gap-4 sm:justify-start sm:gap-6">
+          <a href="/" class="flex items-center gap-3">
+            <span class="grid size-10 place-items-center rounded-2xl border border-ink text-sm font-semibold">S</span>
+            <span>
+              <span class="block text-sm font-semibold leading-5">SincerityMinecraft</span>
+              <span class="block text-sm leading-5 text-mute">工具聚合站</span>
+            </span>
+          </a>
+          <a href="/tools/" class={toolLink} aria-current={inTools ? 'page' : undefined}>工具</a>
+        </div>
+        <div class="sm:ml-auto">
+          <SearchBox client:load />
+        </div>
+      </div>
+    </header>
+    <main id="content" class:list={[frame, 'flex flex-1 flex-col', poster ? 'py-6 lg:py-8' : 'py-10']}>
+      <slot />
+    </main>
+    <footer class="border-t border-line">
+      <div class:list={[frame, 'py-8 text-sm text-mute']}>
+        <p>{siteName}</p>
+        <p class="mt-1">计算在浏览器里完成。</p>
+      </div>
+    </footer>
+  </body>
+</html>

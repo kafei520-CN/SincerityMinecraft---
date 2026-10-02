@@ -1,0 +1,231 @@
+---
+import '../styles/global.css';
+---
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title> </title>
+  </head>
+  <body>
+    <div id="ptr-dock" style="width:100vw;height:100vh"></div>
+    <script>
+      import * as THREE from 'three';
+      import {FACE_ORDER} from '../tools/skin-render/boxUv';
+
+      const g = globalThis as unknown as Record<string, unknown>;
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 2000);
+      camera.position.set(36, 22, 78);
+      const target = new THREE.Vector3(0, 16, 0);
+      camera.lookAt(target);
+      class Cube {
+        id = '';
+        name = '';
+        mesh: THREE.Mesh | null = null;
+        visibility = true;
+        faces: Record<string, {texture: unknown; getTexture: () => unknown}> = {};
+      }
+      const textures: Array<{uuid: string; name: string; canvas: HTMLCanvasElement; img: HTMLCanvasElement; source: string; material: THREE.Material; render_mode: string}> = [];
+      const elements: Cube[] = [];
+      const actions: Array<{click?: () => void}> = [];
+      g.THREE = THREE;
+      g.Cube = Cube;
+      g.Mesh = class {};
+      g.Texture = {all: textures, getDefault: () => textures[0] ?? null};
+      g.Canvas = {scene, face_order: [...FACE_ORDER]};
+      g.Outliner = {elements};
+      g.Preview = {selected: {camera, controls: {target}, isOrtho: false}};
+      g.Project = {name: 'render'};
+      g.Format = {render_sides: 'double'};
+      g.settings = {render_sides: {value: 'double'}};
+      const listeners = new Map<string, Set<() => void>>();
+      g.Blockbench = {
+        addCSS(css: string) {
+          const style = document.createElement('style');
+          style.textContent = css;
+          document.head.appendChild(style);
+          return {delete() { style.remove(); }};
+        },
+        on(event: string, fn: () => void) {
+          const set = listeners.get(event) ?? new Set();
+          set.add(fn);
+          listeners.set(event, set);
+        },
+        removeListener() {},
+        dispatch(event: string) {
+          listeners.get(event)?.forEach((fn) => fn());
+        },
+        showQuickMessage() {},
+        export() {},
+      };
+      g.Action = class Action {
+        click?: () => void;
+        constructor(_id: string, data: {click?: () => void}) { this.click = data.click; }
+        delete() {}
+      };
+      g.MenuBar = {addAction(action: {click?: () => void}) { actions.push(action); }};
+      g.BBPlugin = {register(_id: string, def: {onload?: () => void}) { def.onload?.(); }};
+      g.Dialog = class Dialog {
+        object: HTMLElement;
+        constructor(_id: string, opts: {title?: string; lines?: HTMLElement[]}) {
+          this.object = document.createElement('div');
+          this.object.className = 'dialog ptr_dialog_root';
+          this.object.style.cssText = 'height:100vh;display:flex;flex-direction:column';
+          const content = document.createElement('div');
+          content.className = 'dialog_content';
+          content.style.cssText = 'flex:1;min-height:0;display:flex';
+          for (const line of opts.lines ?? []) content.appendChild(line);
+          this.object.appendChild(content);
+        }
+        show() { document.getElementById('ptr-dock')?.replaceChildren(this.object); }
+        hide() { this.object.remove(); }
+        delete() { this.hide(); }
+      };
+
+      try {
+        const saved = JSON.parse(localStorage.getItem('pathtracer_preview_settings') || '{}') as Record<string, unknown>;
+        saved.auto_sync = true;
+        saved.auto_follow = true;
+        saved.render_mode = 'final';
+        localStorage.setItem('pathtracer_preview_settings', JSON.stringify(saved));
+      } catch { /* 使用默认参数 */ }
+
+      const script = document.createElement('script');
+      script.src = '/vendor/null-k/pathtracer.js';
+      script.onload = () => actions[0]?.click?.();
+      document.body.appendChild(script);
+
+      interface MeshPayload {
+        positions: number[];
+        uvs: number[];
+        normals: number[];
+        texture: number;
+        emissive: number;
+      }
+      interface JobPayload {
+        samples: number;
+        width: number;
+        height: number;
+        fov: number;
+        position: [number, number, number];
+        target: [number, number, number];
+        textures: string[];
+        meshes: MeshPayload[];
+      }
+
+      function loadImage(url: string): Promise<HTMLImageElement> {
+        return new Promise((resolve, reject) => {
+          const image = new Image();
+          image.onload = () => resolve(image);
+          image.onerror = () => reject(new Error('贴图读不了'));
+          image.src = url;
+        });
+      }
+
+      function setLabeledNumber(label: string, value: number): void {
+        for (const row of document.querySelectorAll('.ptr_row')) {
+          if (row.querySelector('label')?.textContent !== label) continue;
+          const input = row.querySelector('input');
+          if (!(input instanceof HTMLInputElement)) return;
+          input.value = String(value);
+          input.dispatchEvent(new Event('change', {bubbles: true}));
+          return;
+        }
+      }
+
+      (window as unknown as {renderScene?: (job: JobPayload) => Promise<{ok: boolean; png?: string; error?: string}>}).renderScene = async (job) => {
+        try {
+          elements.length = 0;
+          scene.clear();
+          textures.length = 0;
+          const images = await Promise.all(job.textures.map((url) => loadImage(url)));
+          const materials = images.map((image, index) => {
+            const canvas = document.createElement('canvas');
+            canvas.width = image.width;
+            canvas.height = image.height;
+            const ctx = canvas.getContext('2d');
+            ctx?.drawImage(image, 0, 0);
+            const map = new THREE.CanvasTexture(canvas);
+            map.flipY = true;
+            map.magFilter = THREE.NearestFilter;
+            map.minFilter = THREE.NearestFilter;
+            map.colorSpace = THREE.SRGBColorSpace;
+            const material = new THREE.MeshBasicMaterial({map, transparent: true, alphaTest: 0.1, side: THREE.DoubleSide});
+            const emissive = job.meshes.some((mesh) => mesh.texture === index && mesh.emissive > 0);
+            textures.push({
+              uuid: crypto.randomUUID(),
+              name: emissive ? `自发光 ${index}` : `贴图 ${index}`,
+              canvas,
+              img: canvas,
+              source: canvas.toDataURL(),
+              material,
+              render_mode: emissive ? 'emissive' : 'normal',
+            });
+            return material;
+          });
+          job.meshes.forEach((mesh, index) => {
+            const geometry = new THREE.BufferGeometry();
+            geometry.setAttribute('position', new THREE.Float32BufferAttribute(mesh.positions, 3));
+            geometry.setAttribute('uv', new THREE.Float32BufferAttribute(mesh.uvs, 2));
+            geometry.setAttribute('normal', new THREE.Float32BufferAttribute(mesh.normals, 3));
+            const view = new THREE.Mesh(geometry, materials[mesh.texture]);
+            scene.add(view);
+            const element = new Cube();
+            element.mesh = view;
+            element.name = `网格 ${index}`;
+            const texture = textures[mesh.texture];
+            if (texture) {
+              for (const face of FACE_ORDER) {
+                element.faces[face] = {texture, getTexture: () => texture};
+              }
+            }
+            elements.push(element);
+          });
+          camera.fov = job.fov;
+          camera.position.set(job.position[0], job.position[1], job.position[2]);
+          target.set(job.target[0], job.target[1], job.target[2]);
+          camera.lookAt(target);
+          camera.updateProjectionMatrix();
+          camera.updateMatrixWorld(true);
+          setLabeledNumber('成片采样数', job.samples);
+          setLabeledNumber('预览采样数', job.samples);
+          (g.Blockbench as {dispatch: (event: string) => void}).dispatch('finished_edit');
+          await new Promise((resolve) => setTimeout(resolve, 700));
+          job.meshes.forEach((mesh) => {
+            if (mesh.emissive <= 0) return;
+            const name = textures[mesh.texture]?.name;
+            if (!name) return;
+            for (const box of document.querySelectorAll('#ptr_matlist .ptr_mat')) {
+              if (box.querySelector('.ptr_mat_head span')?.textContent !== name) continue;
+              for (const row of box.querySelectorAll('.ptr_row')) {
+                if (row.querySelector('label')?.textContent !== '自发光') continue;
+                const input = row.querySelector('input[type="number"]');
+                if (input instanceof HTMLInputElement) {
+                  input.value = String(mesh.emissive);
+                  input.dispatchEvent(new Event('change', {bubbles: true}));
+                }
+              }
+            }
+          });
+          const samples = Math.max(4, job.samples);
+          const started = performance.now();
+          while (performance.now() - started < 180000) {
+            const text = document.querySelector('#ptr_overlay')?.textContent ?? '';
+            const found = text.match(/(\d+)\s*spp/);
+            const spp = found ? Number(found[1]) : 0;
+            if (spp >= samples) break;
+            await new Promise((resolve) => setTimeout(resolve, 300));
+          }
+          const tracer = document.querySelector('#ptr_canvas');
+          if (!(tracer instanceof HTMLCanvasElement) || tracer.width < 2) {
+            return {ok: false, error: '显卡没有画出画面'};
+          }
+          return {ok: true, png: tracer.toDataURL('image/png')};
+        } catch (caught) {
+          return {ok: false, error: caught instanceof Error ? caught.message : '显卡渲染失败'};
+        }
+      };
+    </script>
+  </body>
+</html>
