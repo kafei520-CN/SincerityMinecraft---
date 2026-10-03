@@ -1,0 +1,66 @@
+---
+import PresenceBeacon from '../../components/PresenceBeacon';
+---
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MC桌宠</title>
+    <link rel="icon" href="/favicon.svg" />
+  </head>
+  <body>
+    <PresenceBeacon client:load path="/pet/" />
+    <a class="back" href="/">返回</a>
+    <div id="view"></div>
+    <div id="floor"></div>
+    <div id="status"></div>
+    <script>
+      import '../../pet/main.js';
+    </script>
+  </body>
+</html>
+
+<style is:global>
+  html, body, #view {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #15181e;
+  }
+  #view {
+    position: fixed;
+    inset: 0;
+  }
+  #view canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+  #floor {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 40px;
+    height: 2px;
+    background: #2a3140;
+    pointer-events: none;
+  }
+  #status {
+    position: fixed;
+    left: 16px;
+    bottom: 16px;
+    color: #fff;
+    font: 13px sans-serif;
+    pointer-events: none;
+  }
+  .back {
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    z-index: 2;
+    color: #d4d7dd;
+    font: 13px sans-serif;
+    text-decoration: none;
+  }
+</style>

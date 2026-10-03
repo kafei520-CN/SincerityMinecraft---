@@ -32,6 +32,11 @@ interface Held {
 
 const held: Held = {nextId: 1};
 let queue: Promise<unknown> = Promise.resolve();
+let jobs = 0;
+
+export function gpuStatus(): {browser: boolean; jobs: number} {
+  return {browser: Boolean(held.process), jobs};
+}
 
 function edgePath(): string {
   const candidates = [
@@ -156,6 +161,8 @@ async function waitUntilReady(call: ReturnType<typeof cdp>, expression = 'typeof
 }
 
 async function renderJob(job: RenderJob, origin: string): Promise<Uint8Array> {
+  jobs += 1;
+  try {
   const call = await ensurePage(origin);
   await call('Page.navigate', {url: `${origin}${PAGE}`});
   await waitUntilReady(call);
@@ -174,9 +181,14 @@ async function renderJob(job: RenderJob, origin: string): Promise<Uint8Array> {
   }
   const base64 = value.png.split(',')[1] ?? '';
   return Buffer.from(base64, 'base64');
+  } finally {
+    jobs -= 1;
+  }
 }
 
 async function renderStudioJob(job: unknown, origin: string): Promise<Uint8Array> {
+  jobs += 1;
+  try {
   const call = await ensurePage(origin);
   await call('Page.navigate', {url: `${origin}${STUDIO_PAGE}`});
   await waitUntilReady(call, 'typeof renderScene === "function"');
@@ -195,6 +207,9 @@ async function renderStudioJob(job: unknown, origin: string): Promise<Uint8Array
   }
   const base64 = value.png.split(',')[1] ?? '';
   return Buffer.from(base64, 'base64');
+  } finally {
+    jobs -= 1;
+  }
 }
 
 /** 排队调用服务器上的 Edge 显卡进程，一次只渲染一张。 */

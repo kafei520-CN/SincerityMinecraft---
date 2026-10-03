@@ -12,6 +12,7 @@
     "@astrojs/node": "^11.1.6",
     "@astrojs/react": "^7.0.0",
     "astro": "^7.3.5",
+    "oimo": "^1.0.9",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "skinview3d": "^3.4.2",

@@ -17,6 +17,9 @@ importers:
       astro:
         specifier: ^7.3.5
         version: 7.3.5(jiti@2.7.0)
+      oimo:
+        specifier: ^1.0.9
+        version: 1.0.9
       react:
         specifier: ^19.3.0
         version: 19.3.0
@@ -1446,6 +1449,9 @@ packages:
 
   ohash@2.0.12:
     resolution: {integrity: sha512-65S/5gk9YSsaRjcyf7Nfa6h/d3E8/1gslpXfI4W7Dxn/oap8IKRuNT5VXkLQ1YFKIEg4apRY4Pj6aiwFzrDdmw==}
+
+  oimo@1.0.9:
+    resolution: {integrity: sha512-eh1eRT3HkKWRjG155pXnzS9JANeeUVZ/bfck5lUPAq23G/lIvkRHn57rwC1unfou+X0wXIF0YmjpKcjDIy3o8g==}
 
   on-finished@2.4.1:
     resolution: {integrity: sha512-oVlzkg3ENAhCk2zdv7IJwd/QUD4z2RxRwpkcGY8psCVcCYZNq4wYnVWALHM+brtuJjePWiYF/ClmuDr8Ch5+kg==}
@@ -3075,6 +3081,8 @@ snapshots:
       ufo: 1.6.4
 
   ohash@2.0.12: {}
+
+  oimo@1.0.9: {}
 
   on-finished@2.4.1:
     dependencies:

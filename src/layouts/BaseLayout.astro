@@ -1,4 +1,5 @@
 ---
+import PresenceBeacon from '../components/PresenceBeacon';
 import SearchBox from '../components/SearchBox';
 import {siteName} from '../tools/catalog';
 import '../styles/global.css';
@@ -30,6 +31,7 @@ const toolLink = inTools
     <link rel="icon" href="/favicon.svg" />
   </head>
   <body class="flex min-h-screen flex-col bg-paper text-ink">
+    <PresenceBeacon client:load path={Astro.url.pathname} />
     <a
       class="sr-only rounded-full bg-ink px-4 py-2 text-white focus:not-sr-only focus:absolute focus:top-3 focus:left-3"
       href="#content"
@@ -47,6 +49,8 @@ const toolLink = inTools
             </span>
           </a>
           <a href="/tools/" class={toolLink} aria-current={inTools ? 'page' : undefined}>工具</a>
+          <a href="/download/" class="rounded-full border border-line bg-white px-4 py-2 text-sm hover:border-ink">下载</a>
+          <a href="/pet/" class="rounded-full border border-line bg-white px-4 py-2 text-sm hover:border-ink">桌宠</a>
         </div>
         <div class="sm:ml-auto">
           <SearchBox client:load />
