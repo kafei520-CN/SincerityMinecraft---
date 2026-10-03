@@ -1,0 +1,6 @@
+物品/方块模型渲染来自 ewanhowell5195/block-model-renderer。
+作者：Ewan Howell
+协议：Mozilla Public License 2.0
+仓库：https://github.com/ewanhowell5195/block-model-renderer
+本目录收录上游浏览器包 block-model-renderer.min.js、配套 wasm 与 assets.zip，未改内容。
+源码以该仓库为准。许可全文见同目录 LICENSE。

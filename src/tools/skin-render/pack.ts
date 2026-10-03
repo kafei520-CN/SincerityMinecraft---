@@ -57,10 +57,16 @@ export async function unzip(buffer: ArrayBuffer): Promise<Map<string, Uint8Array
     const compressed = bytes.subarray(dataOff, dataOff + compSize);
     const raw = method === 0 ? compressed : await inflate(compressed);
     if (raw) {
-      files.set(name, raw);
+      files.set(packKey(name), raw);
     }
   }
   return files;
+}
+
+function packKey(path: string): string {
+  const normalized = path.replaceAll('\\', '/');
+  const at = normalized.toLowerCase().indexOf('assets/');
+  return at >= 0 ? normalized.slice(at) : normalized;
 }
 
 async function inflate(compressed: Uint8Array): Promise<Uint8Array | null> {
@@ -74,29 +80,52 @@ async function inflate(compressed: Uint8Array): Promise<Uint8Array | null> {
   }
 }
 
+const SKIP_BLOCKS = new Set(['air', 'cave_air', 'void_air', 'moving_piston']);
+
 export function listPackItems(files: Map<string, Uint8Array>): string[] {
-  const names: string[] = [];
+  const names = new Set<string>();
   for (const path of files.keys()) {
-    const match = /^assets\/([^/]+)\/models\/item\/(.+)\.json$/.exec(path);
-    if (match?.[1] && match[2]) {
-      names.push(`${match[1]}:${match[2]}`);
+    const itemModel = /^assets\/([^/]+)\/models\/item\/(.+)\.json$/i.exec(path);
+    if (itemModel?.[1] && itemModel[2]) {
+      names.add(`${itemModel[1]}:item/${itemModel[2]}`.replace(/item\/item\//, 'item/'));
+      continue;
+    }
+    const definition = /^assets\/([^/]+)\/items\/(.+)\.json$/i.exec(path);
+    if (definition?.[1] && definition[2]) {
+      names.add(`${definition[1]}:item/${definition[2]}`);
+      continue;
+    }
+    const itemTexture = /^assets\/([^/]+)\/textures\/items?\/([^/]+)\.png$/i.exec(path);
+    if (itemTexture?.[1] && itemTexture[2]) {
+      names.add(`${itemTexture[1]}:item/${itemTexture[2]}`);
+      continue;
+    }
+    const blockState = /^assets\/([^/]+)\/blockstates\/(.+)\.json$/i.exec(path);
+    if (blockState?.[1] && blockState[2] && !SKIP_BLOCKS.has(blockState[2])) {
+      names.add(`${blockState[1]}:block/${blockState[2]}`);
+      continue;
+    }
+    const blockModel = /^assets\/([^/]+)\/models\/block\/(.+)\.json$/i.exec(path);
+    if (blockModel?.[1] && blockModel[2] && !SKIP_BLOCKS.has(blockModel[2])) {
+      names.add(`${blockModel[1]}:block/${blockModel[2]}`);
+      continue;
+    }
+    const blockTexture = /^assets\/([^/]+)\/textures\/block\/([^/]+)\.png$/i.exec(path);
+    if (blockTexture?.[1] && blockTexture[2] && !SKIP_BLOCKS.has(blockTexture[2])) {
+      names.add(`${blockTexture[1]}:block/${blockTexture[2]}`);
     }
   }
-  names.sort();
-  return names;
+  return [...names].sort();
 }
 
 export async function itemMesh(files: Map<string, Uint8Array>, id: string): Promise<{geometry: THREE.BufferGeometry; png: Uint8Array; name: string}> {
   const model = gather(files, id);
   const layer = model.textures?.layer0 || model.textures?.particle || Object.values(model.textures ?? {})[0];
-  if (!layer || layer.startsWith('#')) {
-    throw new Error('这个物品没有贴图');
-  }
-  const png = textureBytes(files, layer);
+  const png = (layer && !layer.startsWith('#') ? textureBytes(files, layer) : null) ?? textureBytes(files, id) ?? texturePng(files, id);
   if (!png) {
     throw new Error('资源包里没有这张贴图');
   }
-  const name = id.split(':')[1] ?? id;
+  const name = (id.split(':')[1] ?? id).split('/').pop() ?? id;
   if (!model.elements?.length) {
     return {geometry: texturePlane(16, 16), png, name};
   }
@@ -119,9 +148,19 @@ function gather(files: Map<string, Uint8Array>, id: string, depth = 0): JavaMode
   return {textures, elements: json.elements ?? parent.elements};
 }
 
+function splitId(id: string): [string, string] {
+  if (id.includes(':')) {
+    const [namespace, rest] = id.split(':');
+    return [namespace || 'minecraft', rest || ''];
+  }
+  return ['minecraft', id];
+}
+
 function readModel(files: Map<string, Uint8Array>, id: string): JavaModel | null {
-  const [namespace, rest] = id.includes(':') ? id.split(':') : ['minecraft', id];
-  const bytes = files.get(`assets/${namespace}/models/${rest}.json`);
+  const [namespace, rest] = splitId(id);
+  const bytes = files.get(`assets/${namespace}/models/${rest}.json`)
+    ?? files.get(`assets/${namespace}/models/item/${rest}.json`)
+    ?? files.get(`assets/${namespace}/items/${rest.replace(/^item\//, '')}.json`);
   if (!bytes) {
     return null;
   }
@@ -129,8 +168,19 @@ function readModel(files: Map<string, Uint8Array>, id: string): JavaModel | null
 }
 
 function textureBytes(files: Map<string, Uint8Array>, id: string): Uint8Array | null {
-  const [namespace, rest] = id.includes(':') ? id.split(':') : ['minecraft', id];
-  return files.get(`assets/${namespace}/textures/${rest}.png`) ?? null;
+  const [namespace, rest] = splitId(id);
+  return files.get(`assets/${namespace}/textures/${rest}.png`)
+    ?? files.get(`assets/${namespace}/textures/item/${rest}.png`)
+    ?? files.get(`assets/${namespace}/textures/items/${rest}.png`)
+    ?? null;
+}
+
+function texturePng(files: Map<string, Uint8Array>, id: string): Uint8Array | null {
+  const [namespace, rest] = splitId(id);
+  const short = rest.split('/').pop() ?? rest;
+  return files.get(`assets/${namespace}/textures/item/${short}.png`)
+    ?? files.get(`assets/${namespace}/textures/items/${short}.png`)
+    ?? null;
 }
 
 function elementsGeometry(model: JavaModel): THREE.BufferGeometry {

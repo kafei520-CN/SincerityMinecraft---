@@ -1,0 +1,8 @@
+# Replace example.com with your domain.
+# Point the domain A record to this server.
+# Map public 80 and 443 to this machine, then:
+#   caddy run --config Caddyfile
+
+example.com {
+	reverse_proxy 127.0.0.1:4321
+}

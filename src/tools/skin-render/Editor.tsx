@@ -15,7 +15,9 @@ import {
   type TraceElement,
   type TracerTexture,
 } from './host';
+import {buildPackModel, modelKind, preparePack} from './bmr';
 import {itemMesh, listPackItems, unzip} from './pack';
+import {makeId} from './id';
 import {buildPlayer, type BuiltPart} from './player';
 
 
@@ -75,10 +77,11 @@ export default function Editor() {
   const [treeWidth, setTreeWidth] = useState(240);
   const [renderWidth, setRenderWidth] = useState(680);
   const [sideWidth, setSideWidth] = useState(360);
+  const [stackHeight, setStackHeight] = useState(() => (typeof window !== 'undefined' ? clamp(Math.round(window.innerHeight * 0.3), 120, 320) : 220));
   const toolRef = useRef<ToolMode>('move');
   const [yaw, setYaw] = useState(32);
   const [pitch, setPitch] = useState(68);
-  const packRef = useRef<Map<string, Uint8Array> | null>(null);
+  const packRef = useRef<{files: Map<string, Uint8Array>; zip: ArrayBuffer; assets?: unknown} | null>(null);
 
   useEffect(() => {
     const host = viewRef.current;
@@ -289,14 +292,25 @@ export default function Editor() {
   async function usePack(file: File): Promise<void> {
     setError('');
     try {
-      const files = await unzip(await file.arrayBuffer());
-      packRef.current = files;
+      const zip = await file.arrayBuffer();
+      const files = await unzip(zip);
+      let assets: unknown;
+      try {
+        assets = await preparePack(zip);
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : '模型库没有打开');
+      }
+      packRef.current = {files, zip, assets};
       const items = listPackItems(files);
       setPackItems(items);
-      const preferred = items.find((id) => id.endsWith(':diamond_pickaxe')) ?? items.find((id) => id.includes('pickaxe')) ?? items[0] ?? '';
+      const preferred = items.find((id) => id.endsWith('/diamond_pickaxe') || id.endsWith(':diamond_pickaxe'))
+        ?? items.find((id) => id.includes('pickaxe'))
+        ?? items.find((id) => id.includes(':item/'))
+        ?? items[0]
+        ?? '';
       setPackId(preferred);
       if (!items.length) {
-        setError('资源包里没有物品模型');
+        setError('资源包里没有物品或方块贴图');
       }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : '资源包读不了');
@@ -304,31 +318,36 @@ export default function Editor() {
   }
 
   async function putItem(): Promise<void> {
-    const files = packRef.current;
+    const pack = packRef.current;
     const api = apiRef.current;
-    if (!files || !api || packId === '') {
-      setError('先选择资源包里的物品');
+    if (!pack || !api || packId === '') {
+      setError('先选择资源包里的物品或方块');
       return;
     }
     setError('');
     try {
-      const item = await itemMesh(files, packId);
-      const image = await loadImageBlob(item.png);
-      const frame = firstFrame(image);
-      const texture = createTexture(item.name, frame, frame.width, frame.height);
-      const mesh = new THREE.Mesh(item.geometry, texture.material);
-      mesh.position.set(-1, -14, 2);
-      mesh.rotation.x = -Math.PI / 2.4;
-      const arm = api.parts.get('rightArm');
-      (arm?.pivot ?? api.root).add(mesh);
-      const element = adoptMesh(mesh, texture, item.name);
+      let built;
+      try {
+        built = pack.assets ? await buildPackModel(pack.assets, packId) : await fallbackItem(pack.files, packId);
+      } catch {
+        built = await fallbackItem(pack.files, packId);
+      }
+      const kind = built.kind;
+      if (kind === 'block') {
+        built.object.position.set(16, 0, 16);
+        api.scene.add(built.object);
+      } else {
+        built.object.position.set(-1, -14, 2);
+        const arm = api.parts.get('rightArm');
+        (arm?.pivot ?? api.root).add(built.object);
+      }
       const node: SceneNode = {
-        id: element.id,
-        name: item.name,
+        id: built.elements[0]?.id ?? makeId(),
+        name: built.name,
         kind: 'item',
-        object: mesh,
-        elements: [element],
-        texture,
+        object: built.object,
+        elements: built.elements,
+        texture: built.texture,
       };
       api.nodes.push(node);
       publish(api);
@@ -337,6 +356,20 @@ export default function Editor() {
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : '物品放不进去');
     }
+  }
+
+  async function fallbackItem(files: Map<string, Uint8Array>, id: string) {
+    const item = await itemMesh(files, id);
+    const image = await loadImageBlob(item.png);
+    const frame = firstFrame(image);
+    const texture = createTexture(item.name, frame, frame.width, frame.height);
+    const mesh = new THREE.Mesh(item.geometry, texture.material);
+    mesh.rotation.x = modelKind(id) === 'item' ? -Math.PI / 2.4 : 0;
+    const element = adoptMesh(mesh, texture, item.name);
+    const object = new THREE.Group();
+    object.name = item.name;
+    object.add(mesh);
+    return {object, elements: [element], texture, name: item.name, kind: modelKind(id)};
   }
 
   function addLight(): void {
@@ -481,6 +514,7 @@ export default function Editor() {
         ['--tree-w' as string]: `${treeWidth}px`,
         ['--render-w' as string]: `${renderWidth}px`,
         ['--ptr-side' as string]: `${sideWidth}px`,
+        ['--ptr-stack' as string]: `${stackHeight}px`,
         ['--color-ui' as string]: '#282c34',
         ['--color-back' as string]: '#21252b',
         ['--color-text' as string]: '#d4d7dd',
@@ -529,10 +563,16 @@ export default function Editor() {
               <button type="button" className={menuItem} onClick={() => changeSlim(true)}>细手臂{slim ? '  ✓' : ''}</button>
               <div className="space-y-2 border-t border-[#181a1f] px-3 py-2">
                 <select className={inputClass} value={packId} onChange={(event) => setPackId(event.target.value)}>
-                  {packItems.length === 0 && <option value="">未载入物品</option>}
-                  {packItems.map((id) => <option key={id} value={id}>{id.split(':')[1]}</option>)}
+                  {packItems.length === 0 && <option value="">未载入物品或方块</option>}
+                  {packItems.map((id) => {
+                    const rest = id.split(':')[1] ?? id;
+                    const label = rest.startsWith('block/') ? `方块 ${rest.slice(6)}` : `物品 ${rest.replace(/^item\//, '')}`;
+                    return <option key={id} value={id}>{label}</option>;
+                  })}
                 </select>
-                <button type="button" className={`${menuItem} px-0`} onClick={() => void putItem()}>放到右手</button>
+                <button type="button" className={`${menuItem} px-0`} onClick={() => void putItem()}>
+                  {modelKind(packId) === 'block' ? '放到场景' : '放到右手'}
+                </button>
                 <label className="flex items-center justify-between gap-3 whitespace-nowrap">
                   自发光颜色
                   <input type="color" value={lightColor} aria-label="自发光颜色" onChange={(event) => setLightColor(event.target.value)} />
@@ -550,7 +590,7 @@ export default function Editor() {
       </header>
       {error !== '' && <p className="shrink-0 bg-[#3a2424] px-3 py-1 text-xs text-[#ffb4b4]">{error}</p>}
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-        <aside className={`${panel === 'tree' ? 'flex' : 'hidden'} tree-pane order-2 max-h-[46dvh] w-full shrink-0 flex-col bg-[#282c34] lg:order-1 lg:flex lg:max-h-none`}>
+        <aside className={`${panel === 'tree' ? 'flex' : 'hidden'} tree-pane order-2 min-h-0 w-full flex-1 flex-col bg-[#282c34] lg:order-1 lg:flex lg:h-auto lg:flex-none`}>
           <p className="px-3 py-2 text-[11px] tracking-wide text-[#8b919a]">大纲</p>
           <ul className="min-h-0 flex-1 overflow-auto">
             {nodes.map((node) => (
@@ -565,7 +605,7 @@ export default function Editor() {
               </li>
             ))}
           </ul>
-          <div className="space-y-2 border-t border-[#181a1f] p-3">
+          <div className="mt-auto shrink-0 space-y-2 border-t border-[#181a1f] p-3">
             <p className="text-[11px] text-[#8b919a]">{selectedNode?.name ?? '未选择'} 的位置</p>
             <VecFields value={pos} step={0.5} onChange={(next) => writeTransform(next, rot)} />
             <p className="text-[11px] text-[#8b919a]">旋转（度）</p>
@@ -614,9 +654,10 @@ export default function Editor() {
           </div>
         </div>
         <Splitter order="lg:order-2" start={renderWidth} min={420} max={1100} sign={-1} apply={setRenderWidth} />
-        <div className={`${panel === 'render' ? 'flex' : 'hidden'} render-pane relative order-3 h-[70dvh] w-full shrink-0 border-t border-[#181a1f] bg-[#21252b] lg:flex lg:h-auto lg:border-t-0`}>
+        <div className={`${panel === 'render' ? 'flex' : 'hidden'} render-pane relative order-3 min-h-0 w-full flex-1 border-t border-[#181a1f] bg-[#21252b] lg:flex lg:h-auto lg:flex-none lg:border-t-0`}>
           <div id="ptr-dock" className="min-h-0 min-w-0 flex-1 overflow-hidden" />
-          <Splitter edge start={sideWidth} min={220} max={640} sign={-1} apply={setSideWidth} />
+          <Splitter edge start={sideWidth} min={120} max={640} sign={-1} apply={setSideWidth} />
+          <Splitter edge axis="y" start={stackHeight} min={96} max={720} apply={setStackHeight} />
         </div>
         <div className="flex shrink-0 border-t border-[#181a1f] lg:hidden">
           {([['view', '视口'], ['tree', '大纲'], ['render', '渲染']] as const).map(([id, label]) => (
@@ -629,9 +670,54 @@ export default function Editor() {
           .tree-pane { width: var(--tree-w); }
           .render-pane { width: var(--render-w); }
         }
-        #ptr-dock #ptr_sidebar {
-          width: var(--ptr-side) !important;
-          flex: 0 0 var(--ptr-side) !important;
+        #ptr-dock,
+        #ptr-dock .dialog,
+        #ptr-dock .dialog_wrapper,
+        #ptr-dock .dialog_content,
+        #ptr-dock .dialog_content > div,
+        #ptr-dock #ptr_root {
+          height: 100% !important;
+          min-height: 0 !important;
+        }
+        #ptr-dock #ptr_viewport {
+          min-width: 0 !important;
+        }
+        @media (min-width: 1024px) {
+          #ptr-dock #ptr_sidebar {
+            width: var(--ptr-side) !important;
+            flex: 0 0 var(--ptr-side) !important;
+          }
+        }
+        @media (max-width: 1023px) {
+          #ptr-dock .dialog_handle {
+            height: 28px;
+            box-sizing: border-box;
+            overflow: hidden;
+          }
+          #ptr-dock #ptr_root {
+            flex-direction: column !important;
+          }
+          #ptr-dock #ptr_viewport {
+            width: 100% !important;
+            height: var(--ptr-stack) !important;
+            flex: 0 0 var(--ptr-stack) !important;
+            min-height: 0 !important;
+          }
+          #ptr-dock #ptr_sidebar {
+            width: 100% !important;
+            max-width: none !important;
+            flex: 1 1 auto !important;
+            min-height: 0 !important;
+            border-left: none;
+            border-top: 1px solid var(--color-border);
+          }
+          #ptr-dock #ptr_footer {
+            flex-shrink: 0;
+            flex-wrap: wrap;
+          }
+          #ptr-dock #ptr_status {
+            white-space: normal;
+          }
         }
       `}</style>
       {resultUrl !== '' && (
@@ -651,12 +737,22 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-function Splitter({start, min, max, sign = 1, edge = false, order = '', apply}: {start: number; min: number; max: number; sign?: number; edge?: boolean; order?: string; apply: (next: number) => void}) {
+function Splitter({start, min, max, sign = 1, edge = false, order = '', axis = 'x', apply}: {start: number; min: number; max: number; sign?: number; edge?: boolean; order?: string; axis?: 'x' | 'y'; apply: (next: number) => void}) {
+  const vertical = axis === 'x';
   const drag = (event: ReactPointerEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
-    const origin = event.clientX;
-    const move = (pointer: PointerEvent) => apply(clamp(start + (pointer.clientX - origin) * sign, min, max));
+    const origin = vertical ? event.clientX : event.clientY;
+    const pane = event.currentTarget.parentElement;
+    const handle = pane?.querySelector('.dialog_handle') as HTMLElement | null;
+    const footer = document.getElementById('ptr_footer');
+    const cap = vertical
+      ? max
+      : Math.max(min, (pane?.clientHeight ?? max) - (handle?.offsetHeight ?? 28) - (footer?.offsetHeight ?? 36) - 88);
+    const move = (pointer: PointerEvent) => {
+      const pos = vertical ? pointer.clientX : pointer.clientY;
+      apply(clamp(start + (pos - origin) * sign, min, cap));
+    };
     const stop = () => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', stop);
@@ -664,12 +760,23 @@ function Splitter({start, min, max, sign = 1, edge = false, order = '', apply}: 
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', stop);
   };
+  if (edge && !vertical) {
+    return (
+      <div
+        role="separator"
+        aria-orientation="horizontal"
+        className="absolute right-0 left-0 z-20 h-2.5 -translate-y-1/2 cursor-row-resize touch-none bg-[#181a1f] hover:bg-[#3e90ff] lg:hidden"
+        style={{top: 'calc(28px + var(--ptr-stack))'}}
+        onPointerDown={drag}
+      />
+    );
+  }
   return (
     <div
       role="separator"
       aria-orientation="vertical"
       className={edge
-        ? 'absolute top-0 bottom-0 z-20 hidden w-2 -translate-x-1/2 cursor-col-resize hover:bg-[#3e90ff] lg:block'
+        ? 'absolute top-0 bottom-0 z-20 hidden w-2 -translate-x-1/2 cursor-col-resize touch-none hover:bg-[#3e90ff] lg:block'
         : `relative z-20 hidden w-2 shrink-0 cursor-col-resize bg-[#181a1f] hover:bg-[#3e90ff] lg:block ${order}`}
       style={edge ? {right: 'var(--ptr-side)'} : undefined}
       onPointerDown={drag}
